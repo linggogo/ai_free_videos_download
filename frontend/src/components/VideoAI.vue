@@ -33,7 +33,9 @@ let summaryStream = null
 
 // 思维导图
 const markmapContainer = ref(null)
+const fullscreenMarkmapContainer = ref(null)
 let markmapInstance = null
+const mindmapFullscreen = ref(false)
 
 // AI 问答状态
 const chatMessages = ref([])
@@ -120,20 +122,43 @@ watch([activeTab, summaryDone], async () => {
   }
 })
 
+// 全屏模式打开时自动渲染
+watch(mindmapFullscreen, async (val) => {
+  if (val && summaryText.value) {
+    await nextTick()
+    // 等待 DOM 挂载
+    await new Promise(r => setTimeout(r, 50))
+    renderMindmapIn(fullscreenMarkmapContainer.value)
+  }
+})
+
+// Esc 退出全屏
+function handleKeydown(e) {
+  if (e.key === 'Escape' && mindmapFullscreen.value) {
+    mindmapFullscreen.value = false
+  }
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', handleKeydown)
+}
+
 function renderMindmap() {
-  const el = markmapContainer.value
-  if (!el) return
+  renderMindmapIn(markmapContainer.value)
+}
+
+function renderMindmapIn(containerEl) {
+  if (!containerEl) return
 
   // 清除之前的内容
-  el.innerHTML = '<svg></svg>'
-  const svg = el.querySelector('svg')
+  containerEl.innerHTML = '<svg></svg>'
+  const svg = containerEl.querySelector('svg')
   svg.style.width = '100%'
-  svg.style.height = '500px'
+  svg.style.height = '100%'
 
   try {
     const transformer = new Transformer()
     const { root } = transformer.transform(summaryText.value)
-    markmapInstance = Markmap.create(svg, {
+    Markmap.create(svg, {
       colorFreezeLevel: 2,
       duration: 300,
       maxWidth: 300,
@@ -207,9 +232,214 @@ function renderChatMd(text) {
   return marked(text || '')
 }
 
+// ───────── 思维导图下载 ─────────
+
+function getVideoTitle() {
+  return (props.videoInfo?.title || '思维导图').replace(/[\\/:*?"<>|]/g, '_')
+}
+
+function downloadMindmapSVG() {
+  const el = markmapContainer.value
+  if (!el) return
+  const svgEl = el.querySelector('svg')
+  if (!svgEl) return
+
+  // 获取内容组的完整边界（忽略当前 pan/zoom 变换）
+  const g = svgEl.querySelector('g')
+  if (!g) return
+  const bbox = g.getBBox()
+  const padding = 30
+
+  // 克隆 SVG
+  const clone = svgEl.cloneNode(true)
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+
+  // 重置克隆体的 <g> transform，让内容处于原始坐标
+  const cloneG = clone.querySelector('g')
+  if (cloneG) cloneG.setAttribute('transform', '')
+
+  // 设置 viewBox 覆盖全部内容
+  const vx = bbox.x - padding
+  const vy = bbox.y - padding
+  const vw = bbox.width + padding * 2
+  const vh = bbox.height + padding * 2
+  clone.setAttribute('viewBox', `${vx} ${vy} ${vw} ${vh}`)
+  clone.setAttribute('width', vw)
+  clone.setAttribute('height', vh)
+  clone.style.width = `${vw}px`
+  clone.style.height = `${vh}px`
+
+  // 注入浅色主题样式（导出文件独立可读）
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+  style.textContent = `
+    .markmap-node text { fill: #1e293b; }
+    .markmap-foreign { color: #1e293b; }
+    .markmap-foreign code { color: #334155; }
+    svg { background: #ffffff; }
+  `
+  clone.insertBefore(style, clone.firstChild)
+
+  const serializer = new XMLSerializer()
+  const svgStr = serializer.serializeToString(clone)
+  const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
+  triggerDownload(blob, `${getVideoTitle()}.svg`)
+}
+
+async function downloadMindmapPNG() {
+  const el = markmapContainer.value
+  if (!el) return
+  const svgEl = el.querySelector('svg')
+  if (!svgEl) return
+
+  // 获取内容组的完整边界
+  const g = svgEl.querySelector('g')
+  if (!g) return
+  const bbox = g.getBBox()
+  const padding = 40
+
+  const vx = bbox.x - padding
+  const vy = bbox.y - padding
+  const vw = Math.max(bbox.width + padding * 2, 100)
+  const vh = Math.max(bbox.height + padding * 2, 100)
+
+  // 克隆 SVG
+  const clone = svgEl.cloneNode(true)
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink')
+  // 重置 <g> transform，让内容回到原始坐标
+  const cloneG = clone.querySelector('g')
+  if (cloneG) cloneG.setAttribute('transform', '')
+  clone.setAttribute('viewBox', `${vx} ${vy} ${vw} ${vh}`)
+  clone.setAttribute('width', vw)
+  clone.setAttribute('height', vh)
+
+  // 注入浅色主题样式（导出白底深色文字）
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+  style.textContent = `
+    .markmap-node text { fill: #1e293b; }
+    .markmap-foreign { color: #1e293b; }
+    .markmap-foreign code { color: #334155; }
+    svg { background: #ffffff; }
+  `
+  clone.insertBefore(style, clone.firstChild)
+
+  // === 关键：保留 foreignObject，确保每个内部 HTML 节点有正确的 xhtml 命名空间 ===
+  // foreignObject 内的 HTML 必须有 xmlns="http://www.w3.org/1999/xhtml" 才能被 Canvas 正确渲染
+  clone.querySelectorAll('foreignObject > *').forEach(child => {
+    if (!child.getAttribute('xmlns')) {
+      child.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml')
+    }
+  })
+
+  // 序列化为字符串（保留 foreignObject 和所有命名空间）
+  const serializer = new XMLSerializer()
+  const svgStr = serializer.serializeToString(clone)
+
+  // 使用 base64 data URI 加载到 Image
+  const svgBase64 = btoa(unescape(encodeURIComponent(svgStr)))
+  const dataUri = `data:image/svg+xml;base64,${svgBase64}`
+
+  // === Canvas 2x 缩放渲染为高清 PNG ===
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+
+  await new Promise((resolve, reject) => {
+    img.onload = resolve
+    img.onerror = () => reject(new Error('SVG Image load failed'))
+    img.src = dataUri
+  })
+
+  const scale = 2
+  const canvas = document.createElement('canvas')
+  canvas.width = vw * scale
+  canvas.height = vh * scale
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.scale(scale, scale)
+  ctx.drawImage(img, 0, 0, vw, vh)
+
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+  if (blob) {
+    triggerDownload(blob, `${getVideoTitle()}.png`)
+  } else {
+    console.error('PNG export: canvas.toBlob returned null')
+  }
+}
+
+function escapeXml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+}
+
+// ───────── 字幕下载 ─────────
+
+function formatTimeSRT(seconds) {
+  if (seconds == null) return '00:00:00,000'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const ms = Math.round((seconds % 1) * 1000)
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`
+}
+
+function formatTimeVTT(seconds) {
+  if (seconds == null) return '00:00:00.000'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const ms = Math.round((seconds % 1) * 1000)
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`
+}
+
+function downloadSubtitle(format) {
+  const segments = subtitleData.value?.segments
+  if (!segments?.length) return
+
+  const title = getVideoTitle()
+  let content = ''
+  let filename = ''
+  let mimeType = 'text/plain;charset=utf-8'
+
+  if (format === 'srt') {
+    content = segments.map((seg, i) =>
+      `${i + 1}\n${formatTimeSRT(seg.start)} --> ${formatTimeSRT(seg.end)}\n${seg.text}`
+    ).join('\n\n')
+    filename = `${title}.srt`
+    mimeType = 'text/srt;charset=utf-8'
+  } else if (format === 'vtt') {
+    const body = segments.map(seg =>
+      `${formatTimeVTT(seg.start)} --> ${formatTimeVTT(seg.end)}\n${seg.text}`
+    ).join('\n\n')
+    content = `WEBVTT\n\n${body}`
+    filename = `${title}.vtt`
+    mimeType = 'text/vtt;charset=utf-8'
+  } else {
+    // TXT: 纯文本，不含时间戳
+    content = subtitleData.value?.full_text || segments.map(seg => seg.text).join('\n')
+    filename = `${title}.txt`
+  }
+
+  const blob = new Blob([content], { type: mimeType })
+  triggerDownload(blob, filename)
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 onUnmounted(() => {
   if (summaryStream) summaryStream.close()
   if (chatStream) chatStream.close()
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', handleKeydown)
+  }
 })
 </script>
 
@@ -294,10 +524,21 @@ onUnmounted(() => {
             </div>
 
             <div v-else-if="subtitleData?.segments?.length" class="space-y-0.5 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-              <div v-if="subtitleData.language" class="mb-3 flex items-center gap-2">
-                <span class="text-xs px-2.5 py-1 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
+              <div class="mb-3 flex items-center justify-between flex-wrap gap-2">
+                <span v-if="subtitleData.language" class="text-xs px-2.5 py-1 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
                   {{ subtitleData.source === 'auto' ? '自动字幕' : '人工字幕' }} · {{ subtitleData.language }}
                 </span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-text-muted mr-1">下载:</span>
+                  <button
+                    v-for="fmt in ['SRT', 'VTT', 'TXT']"
+                    :key="fmt"
+                    @click="downloadSubtitle(fmt.toLowerCase())"
+                    class="text-xs px-2.5 py-1 rounded-full border border-dark-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/30 hover:bg-accent-blue/5 transition-all cursor-pointer"
+                  >
+                    {{ fmt }}
+                  </button>
+                </div>
               </div>
               <div
                 v-for="(seg, i) in subtitleData.segments"
@@ -327,10 +568,85 @@ onUnmounted(() => {
               <p class="text-text-secondary">暂无可用的总结内容来生成思维导图</p>
             </div>
 
-            <div v-else ref="markmapContainer" class="w-full bg-dark-bg rounded-xl overflow-hidden border border-dark-border">
-              <!-- markmap SVG will be injected here -->
+            <div v-else>
+              <div class="flex items-center justify-end gap-1.5 mb-3">
+                <span class="text-xs text-text-muted mr-1">导出:</span>
+                <button
+                  @click="downloadMindmapSVG"
+                  class="text-xs px-2.5 py-1 rounded-full border border-dark-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/30 hover:bg-accent-blue/5 transition-all cursor-pointer"
+                >
+                  SVG
+                </button>
+                <button
+                  @click="downloadMindmapPNG"
+                  class="text-xs px-2.5 py-1 rounded-full border border-dark-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/30 hover:bg-accent-blue/5 transition-all cursor-pointer"
+                >
+                  PNG
+                </button>
+                <span class="text-text-muted/30 mx-1">|</span>
+                <button
+                  @click="mindmapFullscreen = true"
+                  class="text-xs px-2.5 py-1 rounded-full border border-dark-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/30 hover:bg-accent-blue/5 transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                  全屏
+                </button>
+              </div>
+              <div ref="markmapContainer" class="w-full h-[500px] bg-dark-bg rounded-xl overflow-hidden border border-dark-border">
+                <!-- markmap SVG will be injected here -->
+              </div>
             </div>
           </div>
+
+          <!-- 思维导图全屏遮罩 -->
+          <Teleport to="body">
+            <Transition
+              enter-active-class="transition duration-300 ease-out"
+              enter-from-class="opacity-0"
+              enter-to-class="opacity-100"
+              leave-active-class="transition duration-200 ease-in"
+              leave-from-class="opacity-100"
+              leave-to-class="opacity-0"
+            >
+              <div
+                v-if="mindmapFullscreen && summaryText"
+                data-mindmap-fullscreen
+                class="fixed inset-0 z-50 bg-dark-card flex flex-col"
+              >
+                <!-- 全屏顶栏 -->
+                <div class="flex items-center justify-between px-5 py-3 border-b border-dark-border shrink-0">
+                  <span class="text-sm text-text-secondary font-medium">{{ videoInfo?.title || '思维导图' }}</span>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      @click="downloadMindmapSVG"
+                      class="text-xs px-3 py-1.5 rounded-lg border border-dark-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/30 hover:bg-accent-blue/5 transition-all cursor-pointer"
+                    >
+                      导出 SVG
+                    </button>
+                    <button
+                      @click="downloadMindmapPNG"
+                      class="text-xs px-3 py-1.5 rounded-lg border border-dark-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/30 hover:bg-accent-blue/5 transition-all cursor-pointer"
+                    >
+                      导出 PNG
+                    </button>
+                    <button
+                      @click="mindmapFullscreen = false"
+                      class="ml-2 text-xs px-3 py-1.5 rounded-lg border border-dark-border text-text-secondary hover:text-red-400 hover:border-red-400/30 hover:bg-red-400/5 transition-all cursor-pointer flex items-center gap-1"
+                    >
+                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      退出全屏
+                    </button>
+                  </div>
+                </div>
+                <!-- 全屏思维导图容器 -->
+                <div ref="fullscreenMarkmapContainer" class="flex-1 bg-dark-bg overflow-hidden"></div>
+              </div>
+            </Transition>
+          </Teleport>
 
           <!-- Tab: AI 问答 -->
           <div v-if="activeTab === 'chat'" class="flex flex-col h-[400px]">
@@ -470,5 +786,30 @@ onUnmounted(() => {
   padding-left: 0.75rem;
   color: var(--color-text-muted);
   margin: 0.5rem 0;
+}
+
+/* 思维导图暗色主题：文字改为白色 */
+:deep(.markmap-node text) {
+  fill: #f1f5f9 !important;
+}
+:deep(.markmap-foreign) {
+  color: #f1f5f9 !important;
+}
+:deep(.markmap-foreign code) {
+  color: #e2e8f0 !important;
+}
+</style>
+
+<!-- 全屏思维导图暗色主题（非 scoped，因为 Teleport 到 body） -->
+<style>
+/* 全屏模式：暗色主题，白色文字 */
+[data-mindmap-fullscreen] .markmap-node text {
+  fill: #f1f5f9 !important;
+}
+[data-mindmap-fullscreen] .markmap-foreign {
+  color: #f1f5f9 !important;
+}
+[data-mindmap-fullscreen] .markmap-foreign code {
+  color: #e2e8f0 !important;
 }
 </style>

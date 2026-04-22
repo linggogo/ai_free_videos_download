@@ -42,6 +42,7 @@ function fillExample(placeholder) {
           v-model="url"
           type="text"
           placeholder="粘贴视频链接，支持 YouTube、B站、抖音、TikTok..."
+          aria-label="输入视频链接进行解析下载"
           class="flex-1 bg-transparent text-text-primary placeholder-text-muted text-sm sm:text-base outline-none py-2"
           :disabled="loading"
         />

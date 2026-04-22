@@ -26,7 +26,7 @@ const navItems = [
         </div>
 
         <!-- Desktop Nav -->
-        <nav class="hidden md:flex items-center gap-8">
+        <nav class="hidden md:flex items-center gap-8" aria-label="主导航">
           <a v-for="item in navItems" :key="item.label" :href="item.href"
              class="text-sm text-text-secondary hover:text-text-primary transition-colors">
             {{ item.label }}

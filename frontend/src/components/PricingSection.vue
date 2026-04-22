@@ -1,8 +1,8 @@
 <template>
-  <section id="pricing" class="py-20 px-4">
+  <section id="pricing" class="py-20 px-4" aria-labelledby="pricing-heading">
     <div class="max-w-5xl mx-auto">
       <div class="text-center mb-14">
-        <h2 class="text-3xl sm:text-4xl font-bold text-text-primary mb-4">简单透明的 <span class="gradient-text">定价</span></h2>
+        <h2 id="pricing-heading" class="text-3xl sm:text-4xl font-bold text-text-primary mb-4">简单透明的 <span class="gradient-text">定价</span></h2>
         <p class="text-text-secondary">免费体验核心功能，升级解锁无限可能</p>
       </div>
 

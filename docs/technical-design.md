@@ -213,3 +213,46 @@ ai_free_videos_download/
 - **B站弹幕被当作字幕**：yt-dlp 将 B 站弹幕列为 subtitles，通过 `_SKIP_LANGS = {"danmaku", "live_chat"}` 过滤
 - **B站 Player API 需登录**：`x/player/wbi/v2` 接口即使有 WBI 签名也需要登录才返回字幕 URL
 - **解决方案**：改用 `x/v2/dm/view` 弹幕视图接口，该接口无需签名/登录即可返回完整字幕列表和 URL
+
+### 阶段六：SEO 搜索引擎优化 [已完成]
+
+#### 页面 Meta 与结构化数据（`index.html`）
+- 添加 `<meta name="description">` 和 `<meta name="keywords">` 标签，覆盖核心关键词
+- 添加 Open Graph（og:title / og:description / og:image / og:url）用于社交分享
+- 添加 Twitter Card（twitter:card / twitter:title / twitter:description）
+- 添加 `<link rel="canonical">` 规范化 URL（域名占位符 `saveany.com`）
+- 注入 JSON-LD 结构化数据（`WebApplication` + `SoftwareApplication` schema）
+- 添加 `<noscript>` 降级内容，供不执行 JS 的爬虫读取核心信息
+- 添加 `<link rel="preconnect">` 预连接 Google Fonts 加速字体加载
+
+#### SEO 静态文件
+- **`public/robots.txt`**：允许所有爬虫抓取，指向 sitemap.xml
+- **`public/sitemap.xml`**：站点地图（域名占位符，待上线替换）
+
+#### SPA 预渲染方案
+- 尝试 `vite-plugin-prerender`，因 ESM 兼容性问题（`require is not defined`）弃用
+- 改为独立预渲染脚本 `scripts/prerender.mjs`（基于 puppeteer）
+- `package.json` 新增 `prerender` 和 `build:seo` 脚本
+
+#### 语义化 HTML 与无障碍优化
+- **HeroSection.vue**：优化 H1 标题关键词（"一键下载 · AI 总结"），副标题强化功能描述
+- **FeatureSection.vue**：`<div>` → `<article>` 语义化标签，新增 `role="list/listitem"`、`aria-label`、`aria-labelledby`；新增 2 个功能卡片（AI 视频总结、字幕提取）
+- **AppHeader.vue**：`<nav>` 添加 `aria-label="主导航"`
+- **UrlInput.vue**：`<input>` 添加 `aria-label`
+- **PricingSection.vue**：添加 `aria-labelledby`
+- **AppFooter.vue**：新增页脚 SEO 描述文案，增加搜索引擎可抓取的文本内容
+
+### 阶段七：思维导图 PNG 导出修复 [已完成]
+
+#### 问题
+- 原方案删除 SVG `foreignObject`（含 HTML 富文本自动换行），替换为 SVG `<text>` 元素
+- SVG `<text>` 不支持自动换行，长句子文字被截断/缺失
+
+#### 修复方案（Canvas API）
+- **保留 foreignObject**：不再删除 HTML 富文本节点，保持 markmap 原始渲染结构
+- **补全 xhtml 命名空间**：为 foreignObject 子节点添加 `xmlns="http://www.w3.org/1999/xhtml"`
+- **SVG → Canvas 2x 高清导出**：`XMLSerializer` 序列化 → base64 Data URI → `Image` 加载 → Canvas（2x 缩放）→ `canvas.toBlob('image/png')` → 下载
+- **注入浅色主题样式**：确保 PNG 在白色背景上文字清晰可读
+
+#### 弃用方案
+- `html-to-image`（toPng）：离屏渲染只输出纯白背景，无法正确捕获 SVG markmap 内容

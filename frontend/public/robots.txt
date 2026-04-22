@@ -1,0 +1,11 @@
+# SaveAny - 万能视频下载器
+# https://saveany.com
+
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://saveany.com/sitemap.xml
+
+# Disallow API endpoints (no need to index)
+Disallow: /api/
