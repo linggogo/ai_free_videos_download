@@ -42,8 +42,10 @@ DeepSeek API (AI 大模型)                     -- 流式 AI 总结 + 问答
 7. **思维导图（P1）** - 基于 AI 总结的 Markdown 内容，使用 markmap 渲染交互式思维导图
 8. **AI 问答（P2）** - 基于视频字幕内容的互动问答，支持多轮对话
 
-### 进阶功能（v1.2，待实现）
-9. 批量下载、字幕导出（SRT/VTT/TXT）、用户认证、Stripe 支付
+### 会员支付功能（v1.2）[已完成]
+9. **Stripe 会员支付** - 支持月度会员订阅，一次性付款模式
+10. **用户认证系统** - 邮箱注册/登录，JWT Token 认证
+11. **VIP 会员状态** - subscription_status 激活，AI 功能不限量
 
 ## 三、UI 设计方案
 
@@ -64,32 +66,46 @@ ai_free_videos_download/
 │   ├── app/
 │   │   ├── __init__.py
 │   │   ├── main.py                 # FastAPI 入口 + CORS（端口 8001）
+│   │   ├── auth.py                 # JWT 认证工具 + 依赖注入
+│   │   ├── database.py             # SQLite 数据库 + 用户 CRUD
 │   │   ├── routers/
-│   │   │   └── video.py            # 视频解析/下载/字幕/AI总结 API
+│   │   │   ├── __init__.py
+│   │   │   ├── video.py            # 视频解析/下载/字幕/AI总结 API
+│   │   │   ├── auth.py             # 用户注册/登录 API
+│   │   │   └── payment.py          # Stripe 支付 + Webhook API
 │   │   └── services/
 │   │       ├── downloader.py       # yt-dlp 封装服务
 │   │       ├── douyin.py           # 抖音专用解析（无Cookie下载）
 │   │       ├── subtitle.py         # 通用字幕提取（yt-dlp + 平台优先）
 │   │       ├── bilibili_subtitle.py # B站专用字幕提取（dm/view API）
-│   │       └── ai_service.py       # DeepSeek AI 总结/问答服务
-│   ├── downloads/                  # 临时下载目录（自动清理）
+│   │       ├── ai_service.py        # DeepSeek AI 总结/问答服务
+│   │       └── payment_service.py   # Stripe 支付业务逻辑
+│   ├── downloads/                   # 临时下载目录（自动清理）
+│   ├── saveany.db                  # SQLite 数据库文件
+│   ├── .env                        # 环境变量配置
 │   ├── requirements.txt
 │   └── run.py
 ├── frontend/                       # Vue3 前端
 │   ├── src/
 │   │   ├── App.vue
 │   │   ├── main.js
+│   │   ├── stores/
+│   │   │   └── user.js             # 用户状态管理（Vue3 reactive）
 │   │   ├── components/
-│   │   │   ├── AppHeader.vue       # 导航栏
-│   │   │   ├── HeroSection.vue     # 首屏 Hero
+│   │   │   ├── AppHeader.vue        # 导航栏
+│   │   │   ├── HeroSection.vue      # 首屏 Hero
 │   │   │   ├── UrlInput.vue        # URL 输入框
 │   │   │   ├── VideoResult.vue     # 视频信息 + 下载
 │   │   │   ├── VideoAI.vue         # AI 分析面板（总结/字幕/思维导图/问答）
+│   │   │   ├── AuthModal.vue       # 登录/注册弹窗
+│   │   │   ├── FaqSection.vue      # FAQ 手风琴组件
 │   │   │   ├── FeatureSection.vue  # 功能亮点
 │   │   │   ├── PricingSection.vue  # 定价展示
 │   │   │   └── AppFooter.vue       # 页脚
 │   │   └── api/
-│   │       └── video.js            # API 调用封装（含 SSE 流式）
+│   │       ├── video.js            # 视频相关 API（含 SSE 流式）
+│   │       ├── auth.js             # 用户认证 API
+│   │       └── payment.js          # 支付 API
 │   ├── vite.config.js              # Vite 配置（proxy -> :8001）
 │   └── package.json
 └── docs/                           # 技术文档
@@ -99,6 +115,8 @@ ai_free_videos_download/
 
 ## 五、API 设计
 
+### 基础视频 API
+
 | 端点 | 方法 | 描述 |
 |------|------|------|
 | `/api/parse` | POST | 解析视频链接，返回视频信息 |
@@ -106,10 +124,39 @@ ai_free_videos_download/
 | `/api/progress/{task_id}` | GET(SSE) | 实时下载进度推送 |
 | `/api/file/{task_id}` | GET | 下载已完成的文件 |
 | `/api/thumbnail` | GET | 代理获取视频缩略图（绕过防盗链） |
+
+### AI 功能 API
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
 | `/api/subtitle` | POST | 提取视频字幕（B站优先平台API，其他平台 yt-dlp） |
 | `/api/summarize` | POST(SSE) | AI 视频总结（DeepSeek 流式输出） |
 | `/api/chat` | POST(SSE) | AI 视频问答（DeepSeek 流式输出） |
-| `/health` | GET | 健康检查 |
+
+### 用户认证 API
+
+| 端点 | 方法 | 描述 | 认证 |
+|------|------|------|------|
+| `/api/auth/register` | POST | 邮箱注册 | 否 |
+| `/api/auth/login` | POST | 邮箱登录 | 否 |
+| `/api/auth/me` | GET | 获取当前用户信息 | 需要 |
+
+### 支付 API
+
+| 端点 | 方法 | 描述 | 认证 |
+|------|------|------|------|
+| `/api/payment/create-checkout-session` | POST | 创建 Stripe Checkout Session | 需要 |
+| `/api/payment/create-portal-session` | POST | 创建 Stripe 客户门户 | 需要 |
+| `/api/payment/verify-session` | POST | 主动验证支付结果并激活会员 | 需要 |
+| `/api/payment/config` | GET | 获取 Stripe 配置信息 | 否 |
+| `/api/stripe/webhook` | POST | Stripe Webhook 接收端点 | Stripe 签名 |
+
+### 系统 API
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/health` | GET | 健康检查 |
+| `/health` | GET | 健康检查（备用） |
 
 ## 六、版权与风险控制
 
@@ -119,9 +166,10 @@ ai_free_videos_download/
 
 ## 七、已确认事项
 
-- v1.0 做匿名免费版，不需要登录/注册/付费功能
+- v1.0/v1.1 已完成基础视频下载和 AI 增值功能
+- 会员支付系统已实现，支持 Stripe Checkout 和 Webhook
+- 用户认证系统已完成，支持邮箱注册/登录，JWT Token
 - 本地开发运行即可，暂不考虑生产部署
-- 定价区/会员对比表仅做静态展示（为后续付费铺垫）
 
 ## 八、分阶段实施计划
 
@@ -256,3 +304,82 @@ ai_free_videos_download/
 
 #### 弃用方案
 - `html-to-image`（toPng）：离屏渲染只输出纯白背景，无法正确捕获 SVG markmap 内容
+
+### 阶段八：GEO 优化（Generative Engine Optimization）[已完成]
+
+#### 目标
+让 AI 搜索引擎（ChatGPT Browse、Perplexity、Google AI Overviews、Bing Copilot 等）在回答用户问题时优先引用和推荐 SaveAny。
+
+#### llms.txt 协议文件
+- **`public/llms.txt`**：AI 爬虫标准协议文件，包含网站名称、核心功能、支持平台、使用方式、差异化优势
+- **`public/llms-full.txt`**：完整版说明文件，包含所有功能详细说明、操作步骤、FAQ、技术架构
+- **`index.html`**：新增 `<link rel="alternate">` 引用 llms.txt 和 llms-full.txt
+
+#### robots.txt AI 爬虫支持
+- 明确允许主流 AI 爬虫抓取：GPTBot、ChatGPT-User、Claude-Web、PerplexityBot、Bytespider、Applebot-Extended、cohere-ai、Google-Extended、anthropic-ai
+- 添加 llms.txt 文件引用注释
+
+#### FAQPage 结构化数据（`index.html`）
+- 新增 `FAQPage` JSON-LD，包含 8 个高频问题
+- 覆盖关键查询：免费下载视频、支持平台、AI 总结用法、与竞品区别、格式分辨率、移动端使用、注册付费、字幕提取
+- AI 引擎在回答相关问题时会优先提取 FAQ 内容
+
+#### HowTo 结构化数据（`index.html`）
+- 新增 `HowTo` JSON-LD，5 步操作流程
+- 步骤：打开网站 → 粘贴链接 → 选择格式 → 下载视频 → 查看 AI 总结
+- 帮助 AI 引擎提取"操作步骤"类内容
+
+#### 前端 FAQ 组件
+- **FaqSection.vue**：新增可见 FAQ 手风琴组件
+- 使用 `<details>/<summary>` 语义化标签
+- 内容与 FAQPage JSON-LD 保持一致，双重命中提高被引用概率
+- 插入位置：PricingSection 之后、AppFooter 之前
+
+#### FeatureSection 对比文案
+- 在功能卡片和平台列表下方新增"SaveAny vs 其他工具"对比摘要
+- 包含具体数据（1800+ 平台、4K 画质、yt-dlp 148k+ Stars）
+- 明确差异化优势（AI 总结 + 思维导图是独有功能）
+- 使用 `<section>` + `<h3>` 语义化标签，便于 AI 爬虫提取
+
+### 阶段九：会员支付系统 [已完成]
+
+#### 后端新增模块
+- **用户认证** `auth.py` + `database.py`：JWT Token 生成与验证，SQLite 用户存储
+  - `create_token()` / `decode_token()`：JWT Token 工具
+  - `require_user()` / `get_current_user()`：FastAPI 依赖注入
+  - `get_user_by_email()` / `get_user_by_id()` / `update_user()`：用户 CRUD
+- **支付服务** `payment_service.py`：Stripe 支付业务逻辑
+  - `create_checkout_session()`：创建 Stripe Checkout Session
+  - `verify_checkout_session()`：主动验证支付结果并激活会员（webhook 补充机制）
+  - `handle_webhook_event()`：处理 Stripe Webhook 事件（幂等性去重）
+  - 支持一次性付款（payment）和订阅模式（subscription）两种模式
+  - 一次性付款会员有效期 30 天
+
+#### 后端新增 API 端点
+- `POST /api/auth/register`：邮箱注册
+- `POST /api/auth/login`：邮箱登录
+- `GET /api/auth/me`：获取当前用户信息（含 AI 使用量）
+- `POST /api/payment/create-checkout-session`：创建支付会话
+- `POST /api/payment/create-portal-session`：创建客户门户
+- `POST /api/payment/verify-session`：主动验证支付并激活会员
+- `GET /api/payment/config`：获取 Stripe 配置
+- `POST /api/stripe/webhook`：Stripe Webhook 接收端点
+
+#### 前端新增组件
+- **AuthModal.vue**：登录/注册弹窗组件
+  - Tab 切换登录/注册
+  - 邮箱 + 密码表单验证
+  - 错误提示和成功反馈
+- **user.js**：用户状态管理
+  - `isLoggedIn`：登录状态（token + user 双条件）
+  - `isVip`：VIP 会员判断
+  - `aiUsage`：AI 使用量追踪
+- **payment.js**：支付 API 封装
+  - `createCheckoutSession()`：创建支付会话
+  - `verifySession()`：验证支付结果
+  - `getPaymentConfig()`：获取支付配置
+
+#### 已修复的支付相关问题
+- **Stripe v15 兼容性**：`metadata` 从 dict 改为 StripeObject，使用 `_safe_metadata_get()` 访问
+- **Webhook 未送达**：前端支付成功回跳时主动调用 `verify-session` 确保激活
+- **VIP 状态同步**：`App.vue onMounted` 中获取最新用户信息
