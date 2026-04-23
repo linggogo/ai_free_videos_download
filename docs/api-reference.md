@@ -4,8 +4,11 @@
 - 后端地址：http://localhost:8001
 - 前端开发地址：http://localhost:5173（通过 Vite proxy 代理 /api 到后端）
 - 系统依赖：ffmpeg（brew install ffmpeg）— yt-dlp 合并视频+音频流必需
-- Python 依赖：fastapi, uvicorn, yt-dlp, python-multipart, httpx, openai
-- 环境变量：`DEEPSEEK_API_KEY`（AI 总结/问答功能必需）
+- Python 依赖：fastapi, uvicorn, yt-dlp, python-multipart, httpx, openai, stripe, python-dotenv
+- 环境变量：
+  - `DEEPSEEK_API_KEY`（AI 总结/问答功能必需）
+  - `STRIPE_SECRET_KEY`、`STRIPE_PUBLISHABLE_KEY`、`STRIPE_PRICE_ID`（支付功能必需）
+  - `STRIPE_WEBHOOK_SECRET`（Webhook 签名验证必需）
 
 ---
 
@@ -382,4 +385,138 @@ while (true) {
   }
 }
 ```
+
+---
+
+## 10. POST /api/payment/create-checkout-session
+
+创建 Stripe Checkout Session（需要登录）。
+
+**请求头：**
+```
+Authorization: Bearer {token}
+```
+
+**响应：**
+```json
+{
+  "checkout_url": "https://checkout.stripe.com/..."
+}
+```
+
+---
+
+## 11. POST /api/payment/create-portal-session
+
+创建 Stripe 客户门户会话（需要登录）。
+
+**请求头：**
+```
+Authorization: Bearer {token}
+```
+
+**响应：**
+```json
+{
+  "portal_url": "https://billing.stripe.com/..."
+}
+```
+
+---
+
+## 12. POST /api/payment/verify-session
+
+主动验证支付结果并激活会员（需要登录）。
+
+支付成功回跳后调用此接口，确保即使 webhook 未送达也能激活会员。
+
+**请求头：**
+```
+Authorization: Bearer {token}
+```
+
+**请求体：**
+```json
+{
+  "session_id": "cs_test_xxx"
+}
+```
+
+**响应：**
+```json
+{
+  "activated": true,
+  "reason": "会员已激活"
+}
+```
+
+> **注意**：Stripe Python SDK v15 中 `metadata` 是 `StripeObject` 类型，不支持 `.get()` 方法。代码中应使用 `_safe_metadata_get()` 辅助函数。
+
+---
+
+## 13. GET /api/payment/config
+
+获取 Stripe 配置信息。
+
+**响应：**
+```json
+{
+  "publishable_key": "pk_test_xxx",
+  "price": "19.9",
+  "currency": "CNY",
+  "period": "月"
+}
+```
+
+---
+
+## 14. POST /api/stripe/webhook
+
+Stripe Webhook 接收端点。
+
+注意：这个端点必须接收原始 body（不能被 JSON 解析），因为 Stripe 签名验证需要原始 payload。
+
+**请求头：**
+```
+Stripe-Signature: t=xxx,v1=xxx
+```
+
+**响应：**
+```json
+{
+  "status": "ok",
+  "message": "Processed checkout.session.completed"
+}
+```
+
+---
+
+## 15. GET /api/auth/me
+
+获取当前用户信息（需要登录）。
+
+**请求头：**
+```
+Authorization: Bearer {token}
+```
+
+**响应：**
+```json
+{
+  "user": {
+    "id": 1,
+    "email": "user@example.com",
+    "subscription_status": "active",
+    "subscription_end_date": "2026-05-22T11:58:56+00:00",
+    "created_at": "2026-04-22T10:51:13"
+  },
+  "ai_usage": {
+    "used": 0,
+    "limit": null,
+    "is_vip": true
+  }
+}
+```
+
+> **注意**：`subscription_status` 为 `active` 表示 VIP 会员，`is_vip` 为 true 表示 VIP 用户（AI 功能不限量）。
 
