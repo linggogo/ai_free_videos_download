@@ -1,14 +1,74 @@
+<script setup>
+import { ref } from 'vue'
+import { isLoggedIn, isVip } from '../stores/user.js'
+import { createCheckoutSession } from '../api/payment.js'
+
+const emit = defineEmits(['showAuth'])
+const upgradeLoading = ref(false)
+
+const plans = [
+  {
+    name: '免费版',
+    price: '¥0',
+    unit: '',
+    desc: '基础功能，轻松体验',
+    featured: false,
+    ctaFree: true,
+    features: [
+      { text: '视频下载无限制', included: true },
+      { text: '支持全部平台', included: true },
+      { text: 'AI 总结每日 3 次', included: true },
+      { text: 'AI 问答每日 3 次', included: true },
+      { text: '字幕提取每日 3 次', included: true },
+      { text: 'AI 思维导图每日 3 次', included: true },
+    ]
+  },
+  {
+    name: '专业版',
+    price: '¥19.9',
+    unit: '/月',
+    desc: '所有功能，无限使用',
+    featured: true,
+    ctaFree: false,
+    features: [
+      { text: '视频下载无限制', included: true },
+      { text: '支持全部平台', included: true },
+      { text: 'AI 总结无限使用', included: true },
+      { text: 'AI 问答无限使用', included: true },
+      { text: '字幕提取无限使用', included: true },
+      { text: 'AI 思维导图无限使用', included: true },
+    ]
+  }
+]
+
+async function handleUpgrade() {
+  if (!isLoggedIn.value) {
+    emit('showAuth')
+    return
+  }
+  upgradeLoading.value = true
+  try {
+    const { checkout_url } = await createCheckoutSession()
+    window.location.href = checkout_url
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    upgradeLoading.value = false
+  }
+}
+</script>
+
 <template>
   <section id="pricing" class="py-20 px-4" aria-labelledby="pricing-heading">
-    <div class="max-w-5xl mx-auto">
+    <div class="max-w-4xl mx-auto">
       <div class="text-center mb-14">
         <h2 id="pricing-heading" class="text-3xl sm:text-4xl font-bold text-text-primary mb-4">简单透明的 <span class="gradient-text">定价</span></h2>
         <p class="text-text-secondary">免费体验核心功能，升级解锁无限可能</p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
         <div v-for="(plan, i) in plans" :key="i"
-             class="relative p-6 rounded-2xl border transition-all"
+             class="relative p-8 rounded-2xl border transition-all"
              :class="plan.featured
                ? 'bg-gradient-to-b from-accent-blue/10 to-dark-card border-accent-blue/40 scale-[1.02]'
                : 'bg-dark-card border-dark-border hover:border-dark-border'">
@@ -28,76 +88,31 @@
 
           <ul class="space-y-3 mb-8">
             <li v-for="(feat, j) in plan.features" :key="j" class="flex items-center gap-2 text-sm">
-              <svg class="w-4 h-4 shrink-0" :class="feat.included ? 'text-emerald-400' : 'text-text-muted'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path v-if="feat.included" stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                <path v-else stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              <svg class="w-4 h-4 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
               </svg>
-              <span :class="feat.included ? 'text-text-secondary' : 'text-text-muted'">{{ feat.text }}</span>
+              <span class="text-text-secondary">{{ feat.text }}</span>
             </li>
           </ul>
 
-          <button
-            class="w-full py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer"
-            :class="plan.featured
-              ? 'bg-gradient-to-r from-accent-blue to-accent-purple text-white hover:from-blue-500 hover:to-purple-500'
-              : 'bg-dark-hover border border-dark-border text-text-secondary hover:text-text-primary'">
-            {{ plan.cta }}
+          <!-- 免费版按钮 -->
+          <button v-if="plan.ctaFree"
+            class="w-full py-3 rounded-xl text-sm font-semibold transition-all bg-dark-hover border border-dark-border text-text-secondary"
+            disabled>
+            {{ isVip ? '已是会员' : isLoggedIn ? '当前使用中' : '免费使用' }}
+          </button>
+          <!-- 专业版按钮 -->
+          <button v-else
+            @click="handleUpgrade"
+            :disabled="upgradeLoading || isVip"
+            class="w-full py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="isVip
+              ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-400'
+              : 'bg-gradient-to-r from-accent-blue to-accent-purple text-white hover:from-blue-500 hover:to-purple-500'">
+            {{ isVip ? '✓ 已是会员' : upgradeLoading ? '跳转中...' : '立即升级' }}
           </button>
         </div>
       </div>
     </div>
   </section>
 </template>
-
-<script setup>
-const plans = [
-  {
-    name: '免费版',
-    price: '¥0',
-    unit: '',
-    desc: '基础下载，轻松体验',
-    featured: false,
-    cta: '当前使用中',
-    features: [
-      { text: '每日 5 次下载', included: true },
-      { text: '最高 720p 清晰度', included: true },
-      { text: '支持主流平台', included: true },
-      { text: '批量下载', included: false },
-      { text: 'AI 视频总结', included: false },
-      { text: '字幕翻译', included: false },
-    ]
-  },
-  {
-    name: '专业版',
-    price: '¥29',
-    unit: '/月',
-    desc: '解锁高清，无限下载',
-    featured: true,
-    cta: '立即升级',
-    features: [
-      { text: '无限次下载', included: true },
-      { text: '最高 4K 清晰度', included: true },
-      { text: '支持全部平台', included: true },
-      { text: '批量下载 (最多10个)', included: true },
-      { text: 'AI 视频总结', included: true },
-      { text: '字幕翻译', included: false },
-    ]
-  },
-  {
-    name: '旗舰版',
-    price: '¥69',
-    unit: '/月',
-    desc: '全部功能，极致体验',
-    featured: false,
-    cta: '联系我们',
-    features: [
-      { text: '无限次下载', included: true },
-      { text: '最高 8K 清晰度', included: true },
-      { text: '支持全部平台', included: true },
-      { text: '无限批量下载', included: true },
-      { text: 'AI 视频总结', included: true },
-      { text: '字幕翻译', included: true },
-    ]
-  }
-]
-</script>

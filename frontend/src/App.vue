@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import HeroSection from './components/HeroSection.vue'
 import UrlInput from './components/UrlInput.vue'
@@ -7,13 +7,20 @@ import VideoResult from './components/VideoResult.vue'
 import VideoAI from './components/VideoAI.vue'
 import FeatureSection from './components/FeatureSection.vue'
 import PricingSection from './components/PricingSection.vue'
+import FaqSection from './components/FaqSection.vue'
 import AppFooter from './components/AppFooter.vue'
+import AuthModal from './components/AuthModal.vue'
 import { parseVideo, startDownload, watchProgress, getFileUrl } from './api/video.js'
+import { getMe } from './api/auth.js'
+import { verifySession } from './api/payment.js'
+import { getToken, setUser, setToken, isLoggedIn } from './stores/user.js'
 
 const loading = ref(false)
 const videoInfo = ref(null)
 const error = ref('')
 const currentUrl = ref('')
+const showAuthModal = ref(false)
+const paymentSuccess = ref(false)
 
 // Download state
 const downloading = ref(false)
@@ -27,6 +34,12 @@ const lastTaskId = ref('')
 let progressWatcher = null
 
 async function handleParse(url) {
+  // 未登录时要求先登录
+  if (!isLoggedIn.value) {
+    showAuthModal.value = true
+    return
+  }
+
   // 清理上一次状态
   loading.value = true
   error.value = ''
@@ -110,11 +123,71 @@ function handleRedownload() {
   progress.value = 0
   progressStatus.value = ''
 }
+
+// 页面加载时恢复登录态 & 处理支付回调
+onMounted(async () => {
+  // 检查 URL 中的支付成功参数
+  const url = new URL(window.location.href)
+  const isPaymentSuccess = url.searchParams.get('payment') === 'success'
+  const sessionId = url.searchParams.get('session_id') || ''
+
+  if (isPaymentSuccess) {
+    paymentSuccess.value = true
+    // 清除 URL 参数
+    url.searchParams.delete('payment')
+    url.searchParams.delete('session_id')
+    window.history.replaceState({}, '', url.pathname + url.search)
+    // 5 秒后自动隐藏
+    setTimeout(() => { paymentSuccess.value = false }, 5000)
+  }
+
+  // 恢复登录态
+  const token = getToken()
+  if (token) {
+    try {
+      // 支付成功回跳 + 有 session_id → 主动验证并激活会员
+      if (isPaymentSuccess && sessionId) {
+        await verifySession(sessionId)
+      }
+
+      // 获取最新用户信息
+      const data = await getMe()
+      setUser(data.user, data.ai_usage)
+    } catch {
+      // Token 过期或无效，清除
+      setToken('')
+    }
+  }
+})
 </script>
 
 <template>
   <div class="min-h-screen bg-dark-bg font-sans">
-    <AppHeader />
+    <AppHeader @showAuth="showAuthModal = true" />
+
+    <!-- 支付成功提示 -->
+    <Transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="opacity-0 -translate-y-2"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 -translate-y-2"
+    >
+      <div v-if="paymentSuccess" class="fixed top-20 left-1/2 -translate-x-1/2 z-50">
+        <div class="flex items-center gap-3 px-6 py-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400 shadow-lg backdrop-blur-md">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          🎉 订阅成功！您已成为 VIP 会员，所有功能已解锁
+          <button @click="paymentSuccess = false" class="ml-2 text-emerald-400/60 hover:text-emerald-400 cursor-pointer">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </Transition>
 
     <main>
       <HeroSection>
@@ -183,12 +256,17 @@ function handleRedownload() {
       <VideoAI
         :videoInfo="videoInfo"
         :url="currentUrl"
+        @showAuth="showAuthModal = true"
       />
 
       <FeatureSection />
-      <PricingSection />
+      <PricingSection @showAuth="showAuthModal = true" />
+      <FaqSection />
     </main>
 
     <AppFooter />
+
+    <!-- 登录/注册弹窗 -->
+    <AuthModal :show="showAuthModal" @close="showAuthModal = false" />
   </div>
 </template>

@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import video
+from app.routers import auth as auth_router
+from app.routers import payment as payment_router
+from app.database import init_db
 
 app = FastAPI(
     title="万能视频下载 API",
@@ -20,6 +23,14 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(video.router, prefix="/api")
+app.include_router(auth_router.router, prefix="/api/auth")
+app.include_router(payment_router.router, prefix="/api")
+
+
+@app.on_event("startup")
+async def startup():
+    """应用启动时初始化数据库"""
+    await init_db()
 
 
 @app.get("/api/health")

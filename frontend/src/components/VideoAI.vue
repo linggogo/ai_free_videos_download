@@ -1,23 +1,162 @@
 <script setup>
 import { ref, watch, nextTick, onUnmounted, computed } from 'vue'
-import { fetchSubtitle, streamSummary, streamChat } from '../api/video.js'
+import { fetchSubtitle, streamSummary, streamChat, getUsageStatus } from '../api/video.js'
 import { Markmap } from 'markmap-view'
 import { Transformer } from 'markmap-lib'
 import { marked } from 'marked'
+import { isLoggedIn, isVip } from '../stores/user.js'
+import { createCheckoutSession } from '../api/payment.js'
 
 const props = defineProps({
   videoInfo: { type: Object, default: null },
   url: { type: String, default: '' },
 })
 
+const emit = defineEmits(['showAuth'])
+
+// AI 使用限制状态
+const aiLimitReached = ref(false)
+const aiLimitMessage = ref('')
+const aiLimitFeature = ref('')  // 哪个功能达到限制
+const upgradeLoading = ref(false)
+const subtitleBlockedByLimit = ref(false)  // 字幕功能是否被限制阻止
+
+// 追踪每个 AI 功能的剩余次数
+const featureRemaining = ref({
+  subtitle: 3,
+  summarize: 3,
+  chat: 3,
+})
+
+// 是否是 VIP
+const isUserVip = ref(false)
+
+// 加载使用状态
+async function loadUsageStatus() {
+  try {
+    const status = await getUsageStatus()
+    featureRemaining.value = {
+      subtitle: status.subtitle.remaining,
+      summarize: status.summarize.remaining,
+      chat: status.chat.remaining,
+    }
+    isUserVip.value = status.is_vip
+  } catch (e) {
+    // 忽略错误，使用默认值
+  }
+}
+
+function checkLimitError(err, featureType = 'summarize') {
+  // err 可能是 Error 对象或其 detail 属性
+  // detail 可能是对象 { message, code, feature, used, limit } 或字符串
+  if (!err) {
+    return false
+  }
+  
+  let errMsg = err?.message || ''
+  let errDetail = err?.detail
+  
+  // 如果 err 是 Error 对象，它的 detail 可能在 err.detail 中
+  // 尝试从错误对象的不同属性中提取信息
+  if (typeof err === 'object') {
+    // 检查 err.detail（API 错误响应）
+    if (!errDetail && err.detail !== undefined) {
+      errDetail = err.detail
+    }
+  }
+  
+  // 处理 detail（可能是对象或字符串）
+  if (errDetail) {
+    if (typeof errDetail === 'object') {
+      if (errDetail.code === 'AI_LIMIT_EXCEEDED') {
+        aiLimitReached.value = true
+        aiLimitMessage.value = errDetail.message || '今日免费 AI 使用次数已用完'
+        aiLimitFeature.value = errDetail.feature || featureType
+        return true
+      }
+      // detail 是对象但不是 AI_LIMIT_EXCEEDED，直接显示 message
+      if (errDetail.message) {
+        aiLimitReached.value = true
+        aiLimitMessage.value = errDetail.message
+        aiLimitFeature.value = featureType
+        return true
+      }
+    }
+    // detail 是字符串
+    const msg = typeof errDetail === 'string' ? errDetail : String(errDetail)
+    if (msg.includes('次数') || msg.includes('用完') || msg.includes('已达')) {
+      aiLimitReached.value = true
+      aiLimitMessage.value = msg
+      aiLimitFeature.value = featureType
+      return true
+    }
+  }
+  
+  // 检查 err.message 是否包含限制信息
+  if (errMsg.includes('次数') || errMsg.includes('用完') || errMsg.includes('已达')) {
+    aiLimitReached.value = true
+    aiLimitMessage.value = errMsg
+    aiLimitFeature.value = featureType
+    return true
+  }
+  
+  return false
+}
+
+async function handleUpgradeFromAI() {
+  if (!isLoggedIn.value) {
+    emit('showAuth')
+    return
+  }
+  upgradeLoading.value = true
+  try {
+    const { checkout_url } = await createCheckoutSession()
+    window.location.href = checkout_url
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    upgradeLoading.value = false
+  }
+}
+
 // Tab 状态
 const activeTab = ref('summary')
-const tabs = [
-  { id: 'summary', label: '总结摘要', icon: '📋' },
-  { id: 'subtitle', label: '字幕文本', icon: '📝' },
-  { id: 'mindmap', label: '思维导图', icon: '🧠' },
-  { id: 'chat', label: 'AI 问答', icon: '💬' },
-]
+
+// 计算每个 tab 的剩余次数
+// AI 问答需要 AI 总结有剩余次数才能使用（共享内容基础）
+const tabUsageInfo = computed(() => {
+  const summarizeRemaining = featureRemaining.value.summarize
+  // AI 问答可用次数 = min(summarize剩余, chat剩余)，当总结为0时问答也为0
+  const chatRemaining = isUserVip.value ? -1 : (summarizeRemaining > 0 ? featureRemaining.value.chat : 0)
+  return {
+    summary: { remaining: featureRemaining.value.summarize, isVip: isUserVip.value },
+    subtitle: { remaining: featureRemaining.value.subtitle, isVip: isUserVip.value },
+    mindmap: { remaining: featureRemaining.value.summarize, isVip: isUserVip.value },  // 思维导图复用总结配额
+    chat: { remaining: chatRemaining, isVip: isUserVip.value },
+  }
+})
+
+// 检查功能是否可用（次数用完或 VIP 无限制）
+function isFeatureAvailable(featureKey) {
+  const remaining = featureRemaining.value[featureKey]
+  if (isUserVip.value) return true
+  return remaining > 0
+}
+
+function getTabLabel(tabId) {
+  const info = tabUsageInfo.value[tabId]
+  if (info.isVip) return tabId === 'summary' ? 'AI总结 ∞' : tabId === 'subtitle' ? '字幕文本 ∞' : tabId === 'chat' ? 'AI 问答 ∞' : '思维导图 ∞'
+  const remaining = info.remaining
+  if (remaining <= 0) return tabId === 'summary' ? 'AI总结 ❌' : tabId === 'subtitle' ? '字幕文本 ❌' : tabId === 'chat' ? 'AI 问答 ❌' : '思维导图 ❌'
+  return tabId === 'summary' ? `AI总结 (${remaining})` : tabId === 'subtitle' ? `字幕文本 (${remaining})` : tabId === 'chat' ? `AI 问答 (${remaining})` : `思维导图 (${remaining})`
+}
+
+const tabs = computed(() => [
+  { id: 'summary', label: getTabLabel('summary'), icon: '📋' },
+  { id: 'subtitle', label: getTabLabel('subtitle'), icon: '📝' },
+  { id: 'mindmap', label: getTabLabel('mindmap'), icon: '🧠' },
+  { id: 'chat', label: getTabLabel('chat'), icon: '💬' },
+])
 
 // 字幕状态
 const subtitleData = ref(null)
@@ -44,6 +183,8 @@ const chatLoading = ref(false)
 const chatError = ref('')
 const chatListRef = ref(null)
 let chatStream = null
+const chatRoundLimit = 3  // 每个视频最多 3 轮 AI 问答
+const currentChatRound = ref(0)  // 当前问答轮次
 
 // 计算属性：渲染 Markdown 为 HTML
 const summaryHtml = computed(() => {
@@ -56,6 +197,8 @@ watch(() => props.videoInfo, async (newInfo) => {
   if (!newInfo) return
   // 重置状态
   resetAll()
+  // 加载使用状态
+  await loadUsageStatus()
   // 自动提取字幕
   await loadSubtitle()
   // 如果有字幕，自动生成总结
@@ -76,7 +219,13 @@ function resetAll() {
   chatInput.value = ''
   chatLoading.value = false
   chatError.value = ''
+  currentChatRound.value = 0  // 重置当前视频的问答轮次
   activeTab.value = 'summary'
+  aiLimitReached.value = false
+  aiLimitMessage.value = ''
+  aiLimitFeature.value = ''
+  subtitleBlockedByLimit.value = false
+  // 不重置 featureRemaining，保持从 API 获取的真实配额
   if (summaryStream) { summaryStream.close(); summaryStream = null }
   if (chatStream) { chatStream.close(); chatStream = null }
 }
@@ -88,8 +237,12 @@ async function loadSubtitle() {
   try {
     subtitleData.value = await fetchSubtitle(props.url)
   } catch (e) {
-    subtitleError.value = e.message
-    subtitleData.value = { available: false, segments: [], full_text: '', message: e.message }
+    if (checkLimitError(e, 'subtitle')) {
+      subtitleBlockedByLimit.value = true
+    } else {
+      subtitleError.value = e.message
+      subtitleData.value = { available: false, segments: [], full_text: '', message: e.message }
+    }
   } finally {
     subtitleLoading.value = false
   }
@@ -110,7 +263,12 @@ function loadSummary() {
     text,
     (chunk) => { summaryText.value += chunk },
     () => { summaryLoading.value = false; summaryDone.value = true },
-    (err) => { summaryError.value = err.message; summaryLoading.value = false },
+    (err) => {
+      if (!checkLimitError(err, 'summarize')) {
+        summaryError.value = err.message
+      }
+      summaryLoading.value = false
+    },
   )
 }
 
@@ -173,8 +331,29 @@ async function sendChatMessage() {
   const question = chatInput.value.trim()
   if (!question || chatLoading.value) return
 
+  // 检查 AI 问答每日配额
+  if (!isUserVip.value && featureRemaining.value.chat <= 0) {
+    aiLimitReached.value = true
+    aiLimitMessage.value = '今日AI问答使用次数已用完（3次/天），升级会员享无限使用'
+    aiLimitFeature.value = 'chat'
+    chatInput.value = ''
+    return
+  }
+
+  // 检查问答轮次限制（每视频最多 3 轮）
+  if (!isUserVip.value && currentChatRound.value >= chatRoundLimit) {
+    aiLimitReached.value = true
+    aiLimitMessage.value = `此视频的 AI 问答已到达上限（${chatRoundLimit}次/视频），升级会员畅享无限 AI 问答`
+    aiLimitFeature.value = 'chat'
+    chatInput.value = ''
+    return
+  }
+
   chatInput.value = ''
   chatError.value = ''
+
+  // 增加问答轮次
+  currentChatRound.value++
 
   // 添加用户消息
   chatMessages.value.push({ role: 'user', content: question })
@@ -202,9 +381,17 @@ async function sendChatMessage() {
       chatMessages.value[msgIndex].content += chunk
       scrollChatToBottom()
     },
-    () => { chatLoading.value = false },
+    () => {
+      chatLoading.value = false
+      // 成功后减少 chat 剩余次数
+      if (!isUserVip.value && featureRemaining.value.chat > 0) {
+        featureRemaining.value.chat--
+      }
+    },
     (err) => {
-      chatError.value = err.message
+      if (!checkLimitError(err, 'chat')) {
+        chatError.value = err.message
+      }
       chatLoading.value = false
       // 移除空的 AI 回复
       if (!chatMessages.value[msgIndex].content) {
@@ -470,6 +657,27 @@ onUnmounted(() => {
         <!-- Tab Content -->
         <div class="p-5 sm:p-6 min-h-[300px]">
 
+          <!-- AI 使用次数限制提示 -->
+          <div v-if="aiLimitReached" class="mb-5 p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-xl">
+            <div class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">🔒</span>
+              <div class="flex-1">
+                <p class="text-sm font-medium text-amber-400 mb-1">{{ aiLimitMessage }}</p>
+                <p class="text-xs text-text-muted mb-3">升级为 VIP 会员，享受所有 AI 功能无限使用</p>
+                <div class="flex items-center gap-2">
+                  <button
+                    @click="handleUpgradeFromAI"
+                    :disabled="upgradeLoading"
+                    class="px-4 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-accent-blue to-accent-purple text-white hover:from-blue-500 hover:to-purple-500 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {{ !isLoggedIn ? '登录后升级' : upgradeLoading ? '跳转中...' : '¥19.9/月 立即升级' }}
+                  </button>
+                  <span class="text-xs text-text-muted">每个功能每日 3 次免费机会</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Tab: 总结摘要 -->
           <div v-if="activeTab === 'summary'">
             <!-- 加载中 -->
@@ -492,7 +700,7 @@ onUnmounted(() => {
             <div v-else-if="subtitleData && !subtitleData.available && !subtitleLoading" class="text-center py-10">
               <div class="text-4xl mb-4">📭</div>
               <p class="text-text-secondary mb-2">{{ subtitleData.message || '该视频没有可用的字幕' }}</p>
-              <p class="text-text-muted text-sm">AI 总结需要字幕内容作为输入，暂时无法为此视频生成总结</p>
+              <p v-if="!subtitleBlockedByLimit" class="text-text-muted text-sm">AI 总结需要字幕内容作为输入，暂时无法为此视频生成总结</p>
             </div>
 
             <!-- 总结内容 -->

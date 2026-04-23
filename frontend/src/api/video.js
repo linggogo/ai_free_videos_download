@@ -1,4 +1,16 @@
+import { getToken } from '../stores/user.js'
+
 const API_BASE = '/api'
+
+/** 构造带 Token 的请求头 */
+function jsonHeaders() {
+  const headers = { 'Content-Type': 'application/json' }
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  return headers
+}
 
 /**
  * 解析视频链接
@@ -137,14 +149,17 @@ export async function fetchSubtitle(url) {
   try {
     const res = await fetch(`${API_BASE}/subtitle`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: jsonHeaders(),
       body: JSON.stringify({ url }),
       signal: controller.signal,
     })
     clearTimeout(timeoutId)
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: '字幕提取失败' }))
-      throw new Error(err.detail || '字幕提取失败')
+      // 创建错误对象并保留 detail 信息用于前端判断
+      const error = new Error(typeof err.detail === 'object' ? err.detail.message || '字幕提取失败' : (err.detail || '字幕提取失败'))
+      error.detail = err.detail
+      throw error
     }
     return res.json()
   } catch (e) {
@@ -173,14 +188,26 @@ export function streamSummary(title, subtitleText, onChunk, onDone, onError) {
     try {
       const res = await fetch(`${API_BASE}/summarize`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: jsonHeaders(),
         body: JSON.stringify({ title, subtitle_text: subtitleText }),
         signal: controller.signal,
       })
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'AI 总结失败' }))
-        throw new Error(err.detail || 'AI 总结失败')
+        let errMsg = 'AI 总结失败'
+        try {
+          const err = await res.json()
+          if (err.detail) {
+            if (typeof err.detail === 'object') {
+              errMsg = err.detail.message || 'AI 总结失败'
+            } else {
+              errMsg = err.detail
+            }
+          }
+        } catch (_) {}
+        const error = new Error(errMsg)
+        error.detail = err?.detail
+        throw error
       }
 
       const reader = res.body.getReader()
@@ -245,7 +272,7 @@ export function streamChat(title, subtitleText, history, question, onChunk, onDo
     try {
       const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: jsonHeaders(),
         body: JSON.stringify({
           title,
           subtitle_text: subtitleText,
@@ -256,8 +283,20 @@ export function streamChat(title, subtitleText, history, question, onChunk, onDo
       })
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'AI 问答失败' }))
-        throw new Error(err.detail || 'AI 问答失败')
+        let errMsg = 'AI 问答失败'
+        try {
+          const err = await res.json()
+          if (err.detail) {
+            if (typeof err.detail === 'object') {
+              errMsg = err.detail.message || 'AI 问答失败'
+            } else {
+              errMsg = err.detail
+            }
+          }
+        } catch (_) {}
+        const error = new Error(errMsg)
+        error.detail = err?.detail
+        throw error
       }
 
       const reader = res.body.getReader()
@@ -301,4 +340,19 @@ export function streamChat(title, subtitleText, history, question, onChunk, onDo
       controller.abort()
     }
   }
+}
+
+/**
+ * 获取 AI 功能使用状态
+ * @returns {Promise<Object>} { subtitle, summarize, chat, is_vip }
+ */
+export async function getUsageStatus() {
+  const res = await fetch(`${API_BASE}/usage`, {
+    method: 'GET',
+    headers: jsonHeaders(),
+  })
+  if (!res.ok) {
+    throw new Error('获取使用状态失败')
+  }
+  return res.json()
 }

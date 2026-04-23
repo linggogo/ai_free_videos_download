@@ -1,13 +1,47 @@
 <script setup>
 import { ref } from 'vue'
+import { isLoggedIn, isVip, userEmail, logout } from '../stores/user.js'
+import { createCheckoutSession, createPortalSession } from '../api/payment.js'
+
+const emit = defineEmits(['showAuth'])
 
 const mobileMenuOpen = ref(false)
+const upgradeLoading = ref(false)
 
 const navItems = [
   { label: '功能特性', href: '#features' },
   { label: '套餐价格', href: '#pricing' },
   { label: '支持平台', href: '#platforms' },
 ]
+
+async function handleUpgrade() {
+  if (!isLoggedIn.value) {
+    emit('showAuth')
+    return
+  }
+  upgradeLoading.value = true
+  try {
+    const { checkout_url } = await createCheckoutSession()
+    window.location.href = checkout_url
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    upgradeLoading.value = false
+  }
+}
+
+async function handleManageSubscription() {
+  try {
+    const { portal_url } = await createPortalSession()
+    window.location.href = portal_url
+  } catch (e) {
+    alert(e.message)
+  }
+}
+
+function handleLogout() {
+  logout()
+}
 </script>
 
 <template>
@@ -33,11 +67,57 @@ const navItems = [
           </a>
         </nav>
 
-        <!-- CTA -->
+        <!-- CTA / User Area -->
         <div class="hidden md:flex items-center gap-3">
-          <button class="px-5 py-2 rounded-full text-sm font-medium border border-accent-purple/40 text-accent-purple hover:bg-accent-purple/10 transition-all cursor-pointer">
-            ☆ 开通 VIP
-          </button>
+          <template v-if="!isLoggedIn">
+            <button
+              @click="$emit('showAuth')"
+              class="px-4 py-2 rounded-full text-sm font-medium text-text-secondary hover:text-text-primary border border-dark-border hover:border-accent-blue/30 transition-all cursor-pointer"
+            >
+              登录
+            </button>
+            <button
+              @click="handleUpgrade"
+              class="px-5 py-2 rounded-full text-sm font-medium border border-accent-purple/40 text-accent-purple hover:bg-accent-purple/10 transition-all cursor-pointer"
+            >
+              ☆ 开通 VIP
+            </button>
+          </template>
+          <template v-else-if="isVip">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 text-xs font-semibold text-amber-400">
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              VIP
+            </span>
+            <button
+              @click="handleManageSubscription"
+              class="text-sm text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+            >
+              管理订阅
+            </button>
+            <button
+              @click="handleLogout"
+              class="text-sm text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
+              title="登出"
+            >
+              {{ userEmail.split('@')[0] }}
+            </button>
+          </template>
+          <template v-else>
+            <button
+              @click="handleUpgrade"
+              :disabled="upgradeLoading"
+              class="px-5 py-2 rounded-full text-sm font-medium border border-accent-purple/40 text-accent-purple hover:bg-accent-purple/10 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {{ upgradeLoading ? '跳转中...' : '☆ 升级 VIP' }}
+            </button>
+            <button
+              @click="handleLogout"
+              class="text-sm text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
+              title="登出"
+            >
+              {{ userEmail.split('@')[0] }}
+            </button>
+          </template>
         </div>
 
         <!-- Mobile Menu Button -->
@@ -57,9 +137,19 @@ const navItems = [
            class="block text-sm text-text-secondary hover:text-text-primary py-2">
           {{ item.label }}
         </a>
-        <button class="w-full px-5 py-2.5 rounded-full text-sm font-medium border border-accent-purple/40 text-accent-purple">
-          ☆ 开通 VIP
-        </button>
+        <div class="pt-3 border-t border-dark-border/50 space-y-2">
+          <template v-if="!isLoggedIn">
+            <button @click="$emit('showAuth'); mobileMenuOpen = false" class="block w-full text-left text-sm text-text-secondary hover:text-text-primary py-2 cursor-pointer">
+              登录 / 注册
+            </button>
+          </template>
+          <template v-else>
+            <div class="text-sm text-text-muted py-1">{{ userEmail }}</div>
+            <button v-if="isVip" @click="handleManageSubscription" class="block text-sm text-amber-400 py-2 cursor-pointer">管理订阅</button>
+            <button v-else @click="handleUpgrade" class="block text-sm text-accent-purple py-2 cursor-pointer">升级 VIP</button>
+            <button @click="handleLogout; mobileMenuOpen = false" class="block text-sm text-red-400 py-2 cursor-pointer">退出登录</button>
+          </template>
+        </div>
       </div>
     </div>
   </header>
