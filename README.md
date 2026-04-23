@@ -1,189 +1,195 @@
-# SaveAny — 万能视频下载 & AI 视频分析
+# SaveAny - 万能视频下载器 + AI 视频总结
 
-> 支持 1000+ 视频平台的免费下载工具，内置 AI 视频总结、字幕提取、思维导图、智能问答等增值功能。
+> 一键下载全网视频，AI 自动总结内容，支持 1800+ 平台
 
-## 📸 效果预览
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![首页截图](docs/screenshots/homepage.png)
+## 在线预览
 
-## ✨ 功能特性
+![SaveAny 万能视频下载器界面](/docs/top.png)
 
-### 基础功能（v1.0）
+## 核心功能
 
-- **万能链接解析** — 粘贴链接自动识别平台，获取视频标题、封面、时长、可用分辨率
-- **多格式下载** — 支持选择不同分辨率和格式（MP4、M4A 音频提取等）
-- **实时下载进度** — SSE 推送下载进度，显示速度和剩余时间
-- **缩略图代理** — 绕过平台防盗链，正确显示视频封面
-- **移动端适配** — 响应式设计，手机直接使用
+### 视频下载
+- **1800+ 平台支持**：YouTube、Bilibili、抖音、TikTok、Twitter/X、Instagram 等
+- **多清晰度下载**：支持 4K、1080p、720p 等多种分辨率
+- **音频提取**：支持提取视频音轨为 M4A 格式
+- **实时进度**：SSE 实时推送下载进度
 
-### AI 增值功能（v1.1）
+### AI 智能分析
+- **AI 视频总结**：自动提取字幕 + DeepSeek 大模型生成结构化 Markdown 摘要
 
-- **AI 视频总结** — 基于 DeepSeek 大模型，自动生成结构化 Markdown 摘要（流式输出）
-- **字幕提取** — B 站优先平台 API（无需登录），其他平台 yt-dlp 通用方案
-- **思维导图** — 基于 AI 总结内容，使用 markmap 渲染交互式 SVG 思维导图
-- **AI 问答** — 基于视频字幕内容的多轮互动问答
+![SaveAny万能视频AI总结界面](/docs/ai_summary.png)
+- **思维导图**：基于总结内容生成交互式思维导图，支持导出 SVG/PNG
 
-## 🛠 技术栈
+![SaveAny万能视频AI 思维导图界面](/docs/ai_mind.png)
 
-| 层级 | 技术 |
-|------|------|
-| 前端框架 | Vue 3 + Vite 8 + Tailwind CSS v4 |
-| 后端框架 | Python FastAPI 0.115 + Uvicorn |
-| 下载引擎 | yt-dlp（支持 1000+ 网站） |
-| AI 模型 | DeepSeek（兼容 OpenAI SDK） |
-| HTTP 客户端 | httpx（缩略图代理、B 站 API 调用） |
-| Markdown 渲染 | marked |
+- **字幕提取**：支持人工字幕和 AI 自动字幕，带时间戳展示
+![SaveAny万能视频AI 字幕界面](/docs/ai_txt.png)
+- **AI 问答**：基于视频字幕进行多轮互动问答
+![SaveAny万能视频AI问答界面](/docs/ai_qa.png)
+### 会员系统（接通国际支付Stripe）
+
+- **免费版**：每日 3 次 AI 总结/思维导图，10 次 AI 问答
+- **专业版**：¥19.9/月，所有 AI 功能无限使用
+
+## 技术栈
+
+| 层级 | 技术选型 |
+|------|----------|
+| 前端 | Vue 3 + Vite + Tailwind CSS v4 |
+| 后端 | Python FastAPI |
+| 下载引擎 | yt-dlp (148k+ Stars) |
+| AI 模型 | DeepSeek (兼容 OpenAI SDK) |
 | 思维导图 | markmap-lib + markmap-view |
-| 系统依赖 | ffmpeg（视频+音频流合并） |
+| 支付 | Stripe Checkout |
+| 数据库 | SQLite (用户认证) |
 
-## 📁 项目结构
+## 支持的平台
 
-```
-ai_free_videos_download/
-├── backend/                        # Python 后端
-│   ├── app/
-│   │   ├── main.py                 # FastAPI 入口 + CORS
-│   │   ├── routers/
-│   │   │   └── video.py            # API 路由（解析/下载/字幕/AI）
-│   │   └── services/
-│   │       ├── downloader.py       # yt-dlp 下载服务封装
-│   │       ├── douyin.py           # 抖音专用解析
-│   │       ├── subtitle.py         # 通用字幕提取（yt-dlp）
-│   │       ├── bilibili_subtitle.py # B 站字幕提取（dm/view API）
-│   │       └── ai_service.py       # DeepSeek AI 总结/问答
-│   ├── downloads/                  # 临时下载目录（自动清理）
-│   ├── requirements.txt
-│   └── run.py                      # 启动脚本
-├── frontend/                       # Vue3 前端
-│   ├── src/
-│   │   ├── App.vue
-│   │   ├── components/
-│   │   │   ├── AppHeader.vue       # 导航栏（毛玻璃暗色主题）
-│   │   │   ├── HeroSection.vue     # 首屏展示
-│   │   │   ├── UrlInput.vue        # URL 输入框
-│   │   │   ├── VideoResult.vue     # 视频信息 + 下载面板
-│   │   │   ├── VideoAI.vue         # AI 分析面板（4 个 Tab）
-│   │   │   ├── FeatureSection.vue  # 功能亮点
-│   │   │   ├── PricingSection.vue  # 定价展示
-│   │   │   └── AppFooter.vue       # 页脚
-│   │   └── api/
-│   │       └── video.js            # API 调用封装（含 SSE 流式）
-│   ├── vite.config.js              # Vite 配置（proxy → :8001）
-│   └── package.json
-└── docs/                           # 技术文档
-    ├── technical-design.md
-    └── api-reference.md
-```
+`YouTube` `Bilibili (B站)` `抖音` `TikTok` `Twitter/X` `Instagram` `Twitch` `快手` `Vimeo` `小红书` ...
 
-## 🚀 快速开始
+**总计支持 1800+ 视频平台**
 
-### 前置依赖
+## 快速开始
 
-- **Python** 3.10+
-- **Node.js** 18+
-- **ffmpeg**（yt-dlp 合并视频+音频必需）
+### 环境要求
 
-```bash
-# macOS 安装 ffmpeg
-brew install ffmpeg
-```
+- Python 3.9+
+- Node.js 18+
+- ffmpeg (`brew install ffmpeg`)
 
-### 1. 克隆项目
-
-```bash
-git clone https://github.com/your-username/ai_free_videos_download.git
-cd ai_free_videos_download
-```
-
-### 2. 启动后端
+### 后端安装
 
 ```bash
 cd backend
 pip install -r requirements.txt
+
+# 配置环境变量 (.env)
+DEEPSEEK_API_KEY=your_api_key
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxx
+STRIPE_PRICE_ID=price_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+
+# 启动服务
 python run.py
-# 后端运行在 http://localhost:8001
 ```
 
-### 3. 启动前端
+后端地址: http://localhost:8001
+
+### 前端安装
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# 前端运行在 http://localhost:5173
 ```
 
-### 4. 配置 AI 功能（可选）
+前端地址: http://localhost:5173
 
-AI 总结和问答功能需要配置 DeepSeek API Key：
+## 使用方法
 
-```bash
-export DEEPSEEK_API_KEY="your-api-key-here"
-```
+1. 打开网站，粘贴视频链接
+2. 选择需要的清晰度/格式
+3. 点击下载，支持实时进度查看
+4. 下载完成后自动触发 AI 分析
+5. 查看 AI 总结、思维导图、字幕文本
+6. 可针对视频内容进行 AI 问答
 
-| 环境变量 | 必填 | 默认值 | 说明 |
-|----------|------|--------|------|
-| `DEEPSEEK_API_KEY` | 是（AI 功能） | — | DeepSeek API 密钥 |
-| `DEEPSEEK_BASE_URL` | 否 | `https://api.deepseek.com` | API 基地址 |
-| `DEEPSEEK_MODEL` | 否 | `deepseek-chat` | 模型名称 |
+## API 接口
 
-### 5. 打开浏览器
+### 基础视频 API
 
-访问 http://localhost:5173 ，粘贴视频链接即可开始使用。
-
-## 📡 API 端点
-
-| 端点 | 方法 | 说明 |
+| 端点 | 方法 | 描述 |
 |------|------|------|
-| `/api/parse` | POST | 解析视频链接，返回视频元信息 |
-| `/api/download` | POST | 开始下载，返回 task_id |
-| `/api/progress/{task_id}` | GET (SSE) | 实时下载进度推送 |
-| `/api/file/{task_id}` | GET | 下载已完成的文件 |
-| `/api/thumbnail` | GET | 代理获取缩略图（绕过防盗链） |
-| `/api/subtitle` | POST | 提取视频字幕 |
-| `/api/summarize` | POST (SSE) | AI 视频总结（流式） |
-| `/api/chat` | POST (SSE) | AI 视频问答（流式） |
-| `/health` | GET | 健康检查 |
+| `/api/parse` | POST | 解析视频链接 |
+| `/api/download` | POST | 开始下载 |
+| `/api/progress/{task_id}` | GET(SSE) | 下载进度 |
+| `/api/file/{task_id}` | GET | 下载文件 |
 
-详细的请求/响应格式请参考 [API 参考文档](docs/api-reference.md)。
+### AI 功能 API
 
-## 🎨 UI 设计
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/subtitle` | POST | 提取字幕 |
+| `/api/summarize` | POST(SSE) | AI 总结 |
+| `/api/chat` | POST(SSE) | AI 问答 |
 
-采用暗色（Dark）主题风格：
+### 支付 API
 
-- **背景**：深黑渐变（#0a0a0f / #12121a）
-- **主色调**：蓝 → 紫 → 青渐变（#3b82f6 / #8b5cf6 / #06b6d4）
-- **特效**：毛玻璃导航栏、发光边框、光晕背景装饰
-- **字体**：Inter（Google Fonts）
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/payment/create-checkout-session` | POST | 创建支付 |
+| `/api/payment/verify-session` | POST | 验证支付 |
+| `/api/stripe/webhook` | POST | Webhook |
 
-## 🔧 字幕提取策略
+详细 API 文档请参考 [docs/api-reference.md](docs/api-reference.md)
+
+## 项目结构
 
 ```
-用户输入 URL
-  ├── 抖音 → 暂不支持字幕提取
-  ├── B 站 → dm/view API（无需登录）
-  │         ├── 成功 → 返回字幕
-  │         └── 失败 → fallback 到 yt-dlp
-  └── 其他平台 → yt-dlp 通用提取
+ai_free_videos_download/
+├── backend/                     # Python 后端
+│   ├── app/
+│   │   ├── main.py             # FastAPI 入口
+│   │   ├── auth.py             # JWT 认证
+│   │   ├── database.py         # SQLite 用户 CRUD
+│   │   ├── routers/
+│   │   │   ├── video.py        # 视频解析/下载 API
+│   │   │   ├── auth.py         # 用户认证 API
+│   │   │   └── payment.py      # Stripe 支付 API
+│   │   └── services/
+│   │       ├── downloader.py   # yt-dlp 封装
+│   │       ├── subtitle.py     # 字幕提取
+│   │       ├── bilibili_subtitle.py  # B站专用
+│   │       ├── ai_service.py   # DeepSeek AI
+│   │       └── payment_service.py   # Stripe 业务
+│   ├── downloads/              # 临时下载目录
+│   └── requirements.txt
+├── frontend/                    # Vue3 前端
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AppHeader.vue
+│   │   │   ├── HeroSection.vue
+│   │   │   ├── UrlInput.vue
+│   │   │   ├── VideoResult.vue
+│   │   │   ├── VideoAI.vue     # AI 分析面板
+│   │   │   ├── AuthModal.vue
+│   │   │   ├── FeatureSection.vue
+│   │   │   ├── PricingSection.vue
+│   │   │   └── FaqSection.vue
+│   │   ├── stores/user.js     # 用户状态
+│   │   └── api/                # API 封装
+│   └── vite.config.js
+└── docs/                        # 技术文档
+    ├── technical-design.md
+    └── api-reference.md
 ```
 
-- B 站通过 `x/v2/dm/view` 弹幕视图接口获取 CC 字幕和 AI 自动字幕
-- 字幕语言优先级：zh-Hans > zh-CN > zh > zh-TW > en > ja > ko
-- 自动过滤弹幕和直播聊天等无效类型
+## SEO 优化
 
-## 📝 开发路线
+- Open Graph + Twitter Card 社交分享支持
+- JSON-LD 结构化数据 (WebApplication, FAQPage, HowTo)
+- robots.txt 支持所有主流爬虫
+- llms.txt AI 爬虫协议文件
+- 语义化 HTML + 无障碍优化
 
-- [x] **阶段一**：项目初始化与基础框架搭建
-- [x] **阶段二**：yt-dlp 服务封装 + 核心 API 开发
-- [x] **阶段三**：前端 UI 页面开发（暗色主题）
-- [x] **阶段四**：联调测试与交互优化
-- [x] **阶段五**：AI 视频总结与增值功能
-- [ ] **阶段六**：批量下载、字幕导出、用户认证、Stripe 支付
+## 安全与隐私
 
-## 🙏 致谢
+- 不存储用户下载的视频文件（自动定期清理）
+- 不收集用户隐私数据
+- Stripe 安全支付
+- JWT Token 认证
 
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — 强大的视频下载引擎
+## 免责声明
 
-## ⚠️ 免责声明
+本工具仅供学习交流使用，请勿用于商业牟利或下载受版权保护的内容。下载前请确保遵守当地法律法规和平台服务条款。
 
-本工具仅供个人学习和研究使用。请尊重视频创作者的版权，不要将下载的内容用于商业用途或未经授权的传播。使用本工具即表示您同意自行承担相关法律责任。
+## License
+
+MIT License
+
+---
+
+Built with ❤️ by linggogo
