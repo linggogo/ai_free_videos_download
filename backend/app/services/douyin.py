@@ -338,7 +338,7 @@ def parse_douyin_video(url: str) -> dict:
     if audio_urls:
         formats.append({
             "format_id": "douyin_audio",
-            "ext": "mp3",
+            "ext": "M4A",
             "resolution": "",
             "height": 0,
             "filesize": None,

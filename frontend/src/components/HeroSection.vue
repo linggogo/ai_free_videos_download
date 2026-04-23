@@ -18,7 +18,7 @@ defineProps({
       </div>
 
       <!-- Title -->
-      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-black leading-tight mb-6">
+      <h1 class="text-5xl sm:text-5xl lg:text-5xl font-black leading-tight mb-6">
         <span class="text-text-primary">万能视频下载器，</span>
         <span class="gradient-text">一键下载 · AI 总结</span>
       </h1>

@@ -42,7 +42,7 @@
         <h3 id="comparison-heading" class="text-xl font-bold text-text-primary mb-6">SaveAny 与其他视频下载工具对比</h3>
         <div class="max-w-3xl mx-auto space-y-4 text-sm text-text-secondary leading-relaxed text-left">
           <p>
-            SaveAny 是一款集视频下载与 AI 分析于一体的在线工具。与 Y2mate、SSYouTube、SaveFrom 等传统视频下载器不同，SaveAny 不仅支持 1800+ 视频平台的多格式下载（4K/1080p/720p/MP3），还独创性地集成了 AI 视频总结、思维导图生成、字幕提取和 AI 问答四大智能功能。
+            SaveAny 是一款集视频下载与 AI 分析于一体的在线工具。与 Y2mate、SSYouTube、SaveFrom 等传统视频下载器不同，SaveAny 不仅支持 1800+ 视频平台的多格式下载（4K/1080p/720p/M4A），还独创性地集成了 AI 视频总结、思维导图生成、字幕提取和 AI 问答四大智能功能。
           </p>
           <p>
             传统视频下载工具通常仅提供单一的下载功能，且大多只支持 YouTube 等少数平台。SaveAny 基于开源的 yt-dlp 引擎（GitHub 148k+ Stars），覆盖 YouTube、Bilibili（B站）、抖音、TikTok、Twitter/X、Instagram 等全球主流视频平台，平台覆盖数量是同类工具的数倍。
@@ -66,7 +66,7 @@ const features = [
   { icon: '🌍', iconLabel: '多平台支持', title: '1800+ 平台', desc: '覆盖全球主流视频平台，YouTube、B站、抖音、TikTok 一网打尽', bgClass: 'bg-emerald-500/10' },
   { icon: '🤖', iconLabel: 'AI视频总结', title: 'AI 视频总结', desc: 'AI 自动提取字幕并生成结构化总结、思维导图，快速掌握视频要点', bgClass: 'bg-violet-500/10' },
   { icon: '📱', iconLabel: '移动端适配', title: '移动端适配', desc: '响应式设计，手机、平板随时随地下载视频，无需安装 APP', bgClass: 'bg-purple-500/10' },
-  { icon: '🎵', iconLabel: '音频提取', title: '音频提取', desc: '支持提取视频音轨，MP3 格式直接保存，追歌利器', bgClass: 'bg-pink-500/10' },
+  { icon: '🎵', iconLabel: '音频提取', title: '音频提取', desc: '支持提取视频音轨，M4A 格式直接保存，追歌利器', bgClass: 'bg-pink-500/10' },
   { icon: '📝', iconLabel: '字幕提取', title: '字幕提取', desc: '自动提取视频字幕，支持人工字幕和 AI 自动字幕，带时间戳展示', bgClass: 'bg-teal-500/10' },
   { icon: '🔒', iconLabel: '安全隐私', title: '安全隐私', desc: '不存储任何用户数据和下载记录，文件自动定期清理', bgClass: 'bg-cyan-500/10' },
 ]

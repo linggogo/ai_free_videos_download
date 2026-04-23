@@ -18,7 +18,7 @@ const plans = [
       { text: '视频下载无限制', included: true },
       { text: '支持全部平台', included: true },
       { text: 'AI 总结每日 3 次', included: true },
-      { text: 'AI 问答每日 3 次', included: true },
+      { text: 'AI 问答每日 10 次', included: true },
       { text: '字幕提取每日 3 次', included: true },
       { text: 'AI 思维导图每日 3 次', included: true },
     ]

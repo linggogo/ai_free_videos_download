@@ -168,7 +168,7 @@ def start_download(url: str, format_id: str) -> str:
                 info = parse_douyin_video(url)
                 if format_id == "douyin_audio":
                     media_url = info.get("_douyin_audio_url", "")
-                    ext = "mp3"
+                    ext = "M4A"
                 else:
                     media_url = info.get("_douyin_video_url", "")
                     ext = "mp4"
